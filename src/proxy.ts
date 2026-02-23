@@ -35,7 +35,7 @@ export const proxy = async (req: NextRequest) => {
   const token = nanoid()
 
   response.cookies.set("x-auth-token", token, {
-    path: `/room/${roomId}`,
+    path: `/`,
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "strict",
