@@ -18,17 +18,32 @@ export const authMiddleware = new Elysia({ name: "auth" })
   })
   .derive({ as: "scoped" }, async ({ query, cookie }) => {
     const roomId = query.roomId
-    const token = cookie["x-auth-token"].value as string | undefined
+    const token = cookie["x-auth-token"]?.value as string | undefined
 
     if (!roomId || !token) {
       throw new AuthError("Missing roomId or token.")
     }
 
-    const connected = await redis.hget<string[]>(`meta:${roomId}`, "connected")
+    // Get connected list
+    const raw = await redis.hget<string>(`meta:${roomId}`, "connected")
+    let connected: string[] = raw ? JSON.parse(raw) : []
 
-    if (!connected?.includes(token)) {
-      throw new AuthError("Invalid token")
+    // If token already exists → allow
+    if (connected.includes(token)) {
+      return { auth: { roomId, token, connected } }
     }
+
+    // Enforce max 2 users
+    if (connected.length >= 2) {
+      throw new AuthError("Room full")
+    }
+
+    // Add new user
+    connected.push(token)
+
+    await redis.hset(`meta:${roomId}`, {
+      connected: JSON.stringify(connected),
+    })
 
     return { auth: { roomId, token, connected } }
   })
