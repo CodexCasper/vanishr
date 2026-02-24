@@ -18,7 +18,8 @@ export const authMiddleware = new Elysia({ name: "auth" })
   })
   .derive({ as: "scoped" }, async ({ query, cookie }) => {
     const roomId = query.roomId
-    const token = cookie["x-auth-token"].value as string | undefined
+    // Cookie name is scoped per-room to match the Next.js middleware
+    const token = cookie[`x-auth-token-${roomId}`]?.value as string | undefined
 
     if (!roomId || !token) {
       throw new AuthError("Missing roomId or token.")
