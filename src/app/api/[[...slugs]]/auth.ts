@@ -8,30 +8,6 @@ class AuthError extends Error {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Safe parser for the `connected` field stored in Redis.
-//
-// middleware.ts writes `connected` via Lua's `cjson.encode` (a JSON string).
-// Upstash's `hget` auto-deserializes valid JSON, so it can return either:
-//   - string[]  — when Upstash deserializes the JSON array for us
-//   - string    — when it receives an unexpected raw string
-//   - null      — when the field or key does not exist
-//
-// This helper normalises all three cases to string[].
-// ---------------------------------------------------------------------------
-function parseConnected(raw: unknown): string[] {
-  if (Array.isArray(raw)) return raw as string[]
-  if (typeof raw === "string") {
-    try {
-      const parsed = JSON.parse(raw)
-      return Array.isArray(parsed) ? parsed : []
-    } catch {
-      return []
-    }
-  }
-  return []
-}
-
 export const authMiddleware = new Elysia({ name: "auth" })
   .error({ AuthError })
   .onError(({ code, set }) => {
@@ -42,17 +18,15 @@ export const authMiddleware = new Elysia({ name: "auth" })
   })
   .derive({ as: "scoped" }, async ({ query, cookie }) => {
     const roomId = query.roomId
-    // Cookie name is scoped per-room to match the Next.js middleware
-    const token = cookie[`x-auth-token-${roomId}`]?.value as string | undefined
+    const token = cookie["x-auth-token"].value as string | undefined
 
     if (!roomId || !token) {
       throw new AuthError("Missing roomId or token.")
     }
 
-    const raw = await redis.hget(`meta:${roomId}`, "connected")
-    const connected = parseConnected(raw)
+    const connected = await redis.hget<string[]>(`meta:${roomId}`, "connected")
 
-    if (!connected.includes(token)) {
+    if (!connected?.includes(token)) {
       throw new AuthError("Invalid token")
     }
 
