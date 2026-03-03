@@ -3,7 +3,7 @@
 import { useUsername } from "@/hooks/use-username"
 import { client } from "@/lib/client"
 import { useRealtime } from "@/lib/realtime-client"
-import { useMutation, useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { format } from "date-fns"
 import { useParams, useRouter } from "next/navigation"
 import { use, useEffect, useRef, useState } from "react"
@@ -19,6 +19,7 @@ const Page = () => {
   const roomId = params.roomId as string
 
   const router = useRouter()
+  const queryClient = useQueryClient()
 
   const { username } = useUsername()
   const [input, setInput] = useState("")
@@ -60,13 +61,15 @@ const Page = () => {
     return () => clearInterval(interval)
   }, [timeRemaining, router])
 
-  const { data: messages, refetch } = useQuery({
-    queryKey: ["messages", roomId],
-    queryFn: async () => {
-      const res = await client.messages.get({ query: { roomId } })
-      return res.data
-    },
-  })
+  const { data: messages } = useQuery({
+  queryKey: ["messages", roomId],
+  queryFn: async () => {
+    const res = await client.messages.get({ query: { roomId } })
+    return res.data
+  },
+  refetchOnWindowFocus: false,
+  keepPreviousData: true,
+})
 
   const { mutate: sendMessage, isPending } = useMutation({
     mutationFn: async ({ text }: { text: string }) => {
@@ -77,18 +80,18 @@ const Page = () => {
   })
 
   useRealtime({
-    channels: [roomId],
-    events: ["chat.message", "chat.destroy"],
-    onData: ({ event }) => {
-      if (event === "chat.message") {
-        refetch()
-      }
+  channels: [roomId],
+  events: ["chat.message", "chat.destroy"],
+  onData: ({ event }) => {
+    if (event === "chat.message") {
+      queryClient.invalidateQueries({ queryKey: ["messages", roomId] })
+    }
 
-      if (event === "chat.destroy") {
-        router.push("/?destroyed=true")
-      }
-    },
-  })
+    if (event === "chat.destroy") {
+      router.push("/?destroyed=true")
+    }
+  },
+})
 
   const { mutate: destroyRoom } = useMutation({
     mutationFn: async () => {
