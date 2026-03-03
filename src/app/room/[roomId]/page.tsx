@@ -68,7 +68,7 @@ const Page = () => {
     return res.data
   },
   refetchOnWindowFocus: false,
-  keepPreviousData: true,
+   placeholderData: (previousData) => previousData,
 })
 
   const { mutate: sendMessage, isPending } = useMutation({
