@@ -6,7 +6,7 @@ import { useRealtime } from "@/lib/realtime-client"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { format } from "date-fns"
 import { useParams, useRouter } from "next/navigation"
-import { use, useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 function formatTimeRemaining(seconds: number) {
   const mins = Math.floor(seconds / 60)
@@ -61,37 +61,37 @@ const Page = () => {
     return () => clearInterval(interval)
   }, [timeRemaining, router])
 
-  const { data: messages } = useQuery({
-  queryKey: ["messages", roomId],
-  queryFn: async () => {
-    const res = await client.messages.get({ query: { roomId } })
-    return res.data
-  },
-  refetchOnWindowFocus: false,
-   placeholderData: (previousData) => previousData,
-})
+  // ✅ FIXED: Always ensure messages has safe default
+  const { data: messages = { messages: [] } } = useQuery({
+    queryKey: ["messages", roomId],
+    queryFn: async () => {
+      const res = await client.messages.get({ query: { roomId } })
+      return res.data
+    },
+    refetchOnWindowFocus: false,
+    placeholderData: (prev) => prev ?? { messages: [] },
+  })
 
   const { mutate: sendMessage, isPending } = useMutation({
     mutationFn: async ({ text }: { text: string }) => {
       await client.messages.post({ sender: username, text }, { query: { roomId } })
-
       setInput("")
     },
   })
 
   useRealtime({
-  channels: [roomId],
-  events: ["chat.message", "chat.destroy"],
-  onData: ({ event }) => {
-    if (event === "chat.message") {
-      queryClient.invalidateQueries({ queryKey: ["messages", roomId] })
-    }
+    channels: [roomId],
+    events: ["chat.message", "chat.destroy"],
+    onData: ({ event }) => {
+      if (event === "chat.message") {
+        queryClient.invalidateQueries({ queryKey: ["messages", roomId] })
+      }
 
-    if (event === "chat.destroy") {
-      router.push("/?destroyed=true")
-    }
-  },
-})
+      if (event === "chat.destroy") {
+        router.push("/?destroyed=true")
+      }
+    },
+  })
 
   const { mutate: destroyRoom } = useMutation({
     mutationFn: async () => {
@@ -113,7 +113,9 @@ const Page = () => {
           <div className="flex flex-col">
             <span className="text-xs text-zinc-500 uppercase">Room ID</span>
             <div className="flex items-center gap-2">
-              <span className="font-bold text-green-500 truncate">{roomId.slice(0,10) + "..."}</span>
+              <span className="font-bold text-green-500 truncate">
+                {roomId.slice(0, 10) + "..."}
+              </span>
               <button
                 onClick={copyLink}
                 className="text-[10px] bg-zinc-800 hover:bg-zinc-700 px-2 py-0.5 rounded text-zinc-400 hover:text-zinc-200 transition-colors"
@@ -134,7 +136,9 @@ const Page = () => {
                   : "text-amber-500"
               }`}
             >
-              {timeRemaining !== null ? formatTimeRemaining(timeRemaining) : "--:--"}
+              {timeRemaining !== null
+                ? formatTimeRemaining(timeRemaining)
+                : "--:--"}
             </span>
           </div>
         </div>
@@ -150,7 +154,7 @@ const Page = () => {
 
       {/* MESSAGES */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin">
-        {messages?.messages.length === 0 && (
+        {messages.messages.length === 0 && (
           <div className="flex items-center justify-center h-full">
             <p className="text-zinc-600 text-sm font-mono">
               No messages yet, start the conversation.
@@ -158,13 +162,15 @@ const Page = () => {
           </div>
         )}
 
-        {messages?.messages.map((msg) => (
+        {messages.messages.map((msg) => (
           <div key={msg.id} className="flex flex-col items-start">
             <div className="max-w-[80%] group">
               <div className="flex items-baseline gap-3 mb-1">
                 <span
                   className={`text-xs font-bold ${
-                    msg.sender === username ? "text-green-500" : "text-blue-500"
+                    msg.sender === username
+                      ? "text-green-500"
+                      : "text-blue-500"
                   }`}
                 >
                   {msg.sender === username ? "YOU" : msg.sender}
