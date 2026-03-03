@@ -10,7 +10,7 @@ export const proxy = async (req: NextRequest) => {
 
   const roomId = roomMatch[1]
 
-  const meta = await redis.hgetall<{ connected: string[]; createdAt: number }>(
+  const meta = await redis.hgetall<{ connected: string; createdAt: number }>(
     `meta:${roomId}`
   )
 
@@ -18,32 +18,46 @@ export const proxy = async (req: NextRequest) => {
     return NextResponse.redirect(new URL("/?error=room-not-found", req.url))
   }
 
+  // SAFELY PARSE CONNECTED USERS
+  let connected: string[] = []
+  try {
+    connected = meta.connected ? JSON.parse(meta.connected as unknown as string) : []
+  } catch {
+    connected = []
+  }
+
   const existingToken = req.cookies.get("x-auth-token")?.value
 
-  // USER IS ALLOWED TO JOIN ROOM
-  if (existingToken && meta.connected.includes(existingToken)) {
+  //IF USER ALREADY IN ROOM → ALLOW
+  if (existingToken && connected.includes(existingToken)) {
     return NextResponse.next()
   }
 
-  // USER IS NOT ALLOWED TO JOIN
-  if (meta.connected.length >= 2) {
+  // IF ROOM HAS 2 DISTINCT USERS → BLOCK
+  if (connected.length >= 2) {
     return NextResponse.redirect(new URL("/?error=room-full", req.url))
   }
 
   const response = NextResponse.next()
 
-  const token = nanoid()
+  const token = existingToken ?? nanoid()
 
+  //ROOM-SCOPED COOKIE
   response.cookies.set("x-auth-token", token, {
-    path: "/",
+    path: `/room/${roomId}`,
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "strict",
   })
 
-  await redis.hset(`meta:${roomId}`, {
-    connected: [...meta.connected, token],
-  })
+  // ADD ONLY IF NOT ALREADY PRESENT
+  if (!connected.includes(token)) {
+    connected.push(token)
+
+    await redis.hset(`meta:${roomId}`, {
+      connected: JSON.stringify(connected),
+    })
+  }
 
   return response
 }
